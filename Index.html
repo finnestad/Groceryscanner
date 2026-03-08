@@ -1,0 +1,1072 @@
+<!DOCTYPE html>
+
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>ScanTrack</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/quagga/0.12.1/quagga.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@400;600;700;800&display=swap');
+
+:root {
+–bg:       #0a0a0f;
+–surface:  #13131a;
+–card:     #1c1c27;
+–border:   #2a2a3d;
+–accent:   #00e5a0;
+–accent2:  #7c6aff;
+–warn:     #ff7c4d;
+–text:     #f0f0f8;
+–muted:    #6b6b8a;
+–success:  #00e5a0;
+}
+
+- { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+
+body {
+font-family: ‘Syne’, sans-serif;
+background: var(–bg);
+color: var(–text);
+min-height: 100vh;
+overflow-x: hidden;
+}
+
+/* ── Top bar ── */
+.topbar {
+position: sticky; top: 0; z-index: 100;
+background: rgba(10,10,15,0.92);
+backdrop-filter: blur(16px);
+border-bottom: 1px solid var(–border);
+padding: 14px 20px;
+display: flex; align-items: center; justify-content: space-between;
+}
+.topbar-logo { font-size: 1.2rem; font-weight: 800; letter-spacing: -0.5px; }
+.topbar-logo span { color: var(–accent); }
+.topbar-total {
+font-family: ‘DM Mono’, monospace;
+font-size: 0.85rem; color: var(–accent);
+background: rgba(0,229,160,0.1);
+border: 1px solid rgba(0,229,160,0.25);
+padding: 4px 10px; border-radius: 20px;
+}
+
+/* ── Nav tabs ── */
+.nav {
+display: flex;
+background: var(–surface);
+border-bottom: 1px solid var(–border);
+overflow-x: auto; scrollbar-width: none;
+}
+.nav::-webkit-scrollbar { display: none; }
+.nav-tab {
+flex: 1; min-width: 80px;
+padding: 12px 8px;
+text-align: center;
+font-size: 0.7rem; font-weight: 700;
+letter-spacing: 0.05em; text-transform: uppercase;
+color: var(–muted);
+cursor: pointer; border: none; background: none;
+border-bottom: 2px solid transparent;
+transition: all 0.2s;
+white-space: nowrap;
+}
+.nav-tab .tab-icon { display: block; font-size: 1.2rem; margin-bottom: 3px; }
+.nav-tab.active { color: var(–accent); border-bottom-color: var(–accent); }
+
+/* ── Screens ── */
+.screen { display: none; padding: 20px; padding-bottom: 40px; }
+.screen.active { display: block; }
+
+/* ── Cards ── */
+.card {
+background: var(–card);
+border: 1px solid var(–border);
+border-radius: 16px;
+padding: 16px;
+margin-bottom: 14px;
+}
+.card-title {
+font-size: 0.65rem; font-weight: 700;
+letter-spacing: 0.1em; text-transform: uppercase;
+color: var(–muted); margin-bottom: 10px;
+}
+
+/* ── Buttons ── */
+.btn {
+display: flex; align-items: center; justify-content: center; gap: 8px;
+width: 100%; padding: 14px 20px;
+border-radius: 12px; border: none; cursor: pointer;
+font-family: ‘Syne’, sans-serif; font-weight: 700; font-size: 0.95rem;
+transition: all 0.15s; -webkit-user-select: none;
+}
+.btn:active { transform: scale(0.97); }
+.btn-primary { background: var(–accent); color: #000; }
+.btn-primary:active { background: #00c988; }
+.btn-secondary { background: var(–accent2); color: #fff; }
+.btn-outline {
+background: transparent;
+border: 1.5px solid var(–border);
+color: var(–text);
+}
+.btn-warn { background: var(–warn); color: #fff; }
+.btn-sm {
+padding: 8px 14px; font-size: 0.8rem;
+border-radius: 8px; width: auto;
+}
+.btn-danger { background: rgba(255,60,60,0.15); border: 1px solid rgba(255,60,60,0.3); color: #ff6060; }
+
+/* ── Scanner ── */
+#scanner-container {
+position: fixed; inset: 0; z-index: 200;
+background: #000;
+display: none; flex-direction: column;
+align-items: center; justify-content: center;
+}
+#scanner-container.open { display: flex; }
+#interactive { width: 100%; max-width: 420px; position: relative; }
+#interactive video { width: 100%; border-radius: 0; }
+#interactive canvas { display: none; }
+.scanner-overlay {
+position: absolute; inset: 0;
+display: flex; align-items: center; justify-content: center;
+pointer-events: none;
+}
+.scan-frame {
+width: 240px; height: 160px;
+border: 2px solid var(–accent);
+border-radius: 12px;
+box-shadow: 0 0 0 9999px rgba(0,0,0,0.55);
+position: relative;
+}
+.scan-line {
+position: absolute; left: 8px; right: 8px; height: 2px;
+background: linear-gradient(90deg, transparent, var(–accent), transparent);
+animation: scanline 1.8s ease-in-out infinite;
+}
+@keyframes scanline {
+0% { top: 10%; opacity: 0; }
+10% { opacity: 1; }
+90% { opacity: 1; }
+100% { top: 85%; opacity: 0; }
+}
+.scanner-label {
+position: absolute; bottom: -32px; left: 50%; transform: translateX(-50%);
+font-size: 0.75rem; color: rgba(255,255,255,0.7); white-space: nowrap;
+font-family: ‘DM Mono’, monospace;
+}
+.scanner-top {
+width: 100%; max-width: 420px;
+padding: 20px; display: flex; justify-content: space-between; align-items: center;
+}
+.scanner-title { font-size: 1rem; font-weight: 700; color: #fff; }
+.scanner-close {
+background: rgba(255,255,255,0.15); border: none; color: #fff;
+width: 36px; height: 36px; border-radius: 50%; font-size: 1.1rem;
+cursor: pointer; display: flex; align-items: center; justify-content: center;
+}
+.scanner-manual {
+width: 100%; max-width: 420px; padding: 16px;
+display: flex; gap: 10px;
+}
+.scanner-manual input {
+flex: 1; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2);
+color: #fff; padding: 10px 14px; border-radius: 10px;
+font-family: ‘DM Mono’, monospace; font-size: 0.9rem;
+}
+.scanner-manual input::placeholder { color: rgba(255,255,255,0.4); }
+.scanner-manual button {
+background: var(–accent); color: #000; border: none;
+padding: 10px 16px; border-radius: 10px;
+font-family: ‘Syne’, sans-serif; font-weight: 700; cursor: pointer;
+}
+
+/* ── Modal ── */
+.modal-backdrop {
+position: fixed; inset: 0; z-index: 300;
+background: rgba(0,0,0,0.75); backdrop-filter: blur(6px);
+display: none; align-items: flex-end;
+}
+.modal-backdrop.open { display: flex; }
+.modal {
+width: 100%; background: var(–card);
+border-radius: 24px 24px 0 0;
+border-top: 1px solid var(–border);
+padding: 24px 20px 40px;
+animation: slideUp 0.25s ease;
+max-height: 90vh; overflow-y: auto;
+}
+@keyframes slideUp {
+from { transform: translateY(100%); }
+to   { transform: translateY(0); }
+}
+.modal-handle {
+width: 40px; height: 4px; background: var(–border);
+border-radius: 2px; margin: 0 auto 20px;
+}
+.modal-title { font-size: 1.1rem; font-weight: 800; margin-bottom: 6px; }
+.modal-sub { font-size: 0.85rem; color: var(–muted); margin-bottom: 20px; }
+
+/* ── Form fields ── */
+.field { margin-bottom: 14px; }
+.field label {
+display: block; font-size: 0.7rem; font-weight: 700;
+letter-spacing: 0.08em; text-transform: uppercase;
+color: var(–muted); margin-bottom: 6px;
+}
+.field input, .field select {
+width: 100%; background: var(–surface);
+border: 1.5px solid var(–border); color: var(–text);
+padding: 12px 14px; border-radius: 10px;
+font-family: ‘Syne’, sans-serif; font-size: 0.95rem;
+transition: border-color 0.2s;
+}
+.field input:focus, .field select:focus {
+outline: none; border-color: var(–accent);
+}
+.field input::placeholder { color: var(–muted); }
+
+/* ── Item rows ── */
+.item-row {
+display: flex; align-items: center; gap: 12px;
+padding: 12px 0;
+border-bottom: 1px solid var(–border);
+}
+.item-row:last-child { border-bottom: none; }
+.item-icon {
+width: 40px; height: 40px; border-radius: 10px;
+background: rgba(124,106,255,0.15); border: 1px solid rgba(124,106,255,0.25);
+display: flex; align-items: center; justify-content: center;
+font-size: 1.1rem; flex-shrink: 0;
+}
+.item-info { flex: 1; min-width: 0; }
+.item-name {
+font-size: 0.9rem; font-weight: 700;
+white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.item-meta { font-size: 0.75rem; color: var(–muted); margin-top: 2px; }
+.item-badge {
+font-family: ‘DM Mono’, monospace;
+font-size: 0.78rem; font-weight: 500;
+color: var(–accent); white-space: nowrap;
+text-align: right;
+}
+.item-delete {
+background: rgba(255,60,60,0.1); border: 1px solid rgba(255,60,60,0.2);
+color: #ff6060; width: 30px; height: 30px; border-radius: 8px;
+font-size: 0.9rem; cursor: pointer; flex-shrink: 0;
+display: flex; align-items: center; justify-content: center;
+}
+
+/* ── Stats strip ── */
+.stats-strip {
+display: grid; grid-template-columns: 1fr 1fr 1fr;
+gap: 10px; margin-bottom: 14px;
+}
+.stat-box {
+background: var(–card); border: 1px solid var(–border);
+border-radius: 12px; padding: 12px 10px; text-align: center;
+}
+.stat-val {
+font-family: ‘DM Mono’, monospace;
+font-size: 1.2rem; font-weight: 500; color: var(–accent);
+}
+.stat-lbl { font-size: 0.62rem; color: var(–muted); text-transform: uppercase;
+letter-spacing: 0.06em; margin-top: 2px; }
+
+/* ── Pill badges ── */
+.pill {
+display: inline-block; padding: 2px 8px; border-radius: 20px;
+font-size: 0.68rem; font-weight: 700; letter-spacing: 0.04em;
+}
+.pill-dept { background: rgba(124,106,255,0.15); color: var(–accent2); }
+.pill-green { background: rgba(0,229,160,0.12); color: var(–accent); }
+
+/* ── Empty state ── */
+.empty {
+text-align: center; padding: 40px 20px; color: var(–muted);
+}
+.empty-icon { font-size: 2.5rem; margin-bottom: 12px; }
+.empty-text { font-size: 0.9rem; line-height: 1.5; }
+
+/* ── Toast ── */
+.toast {
+position: fixed; bottom: 90px; left: 50%; transform: translateX(-50%) translateY(20px);
+background: var(–card); border: 1px solid var(–border);
+border-left: 3px solid var(–accent);
+padding: 12px 18px; border-radius: 12px;
+font-size: 0.85rem; font-weight: 600;
+white-space: nowrap; z-index: 400;
+opacity: 0; transition: all 0.3s;
+pointer-events: none; max-width: 90vw;
+}
+.toast.show {
+opacity: 1; transform: translateX(-50%) translateY(0);
+}
+
+/* ── Section heading ── */
+.section-heading {
+font-size: 1.2rem; font-weight: 800; margin-bottom: 4px;
+}
+.section-sub { font-size: 0.82rem; color: var(–muted); margin-bottom: 18px; }
+
+/* ── Divider ── */
+.divider { height: 1px; background: var(–border); margin: 16px 0; }
+
+/* ── Search bar ── */
+.search-wrap { position: relative; margin-bottom: 14px; }
+.search-wrap input {
+width: 100%; background: var(–card);
+border: 1.5px solid var(–border); color: var(–text);
+padding: 11px 14px 11px 38px; border-radius: 12px;
+font-family: ‘Syne’, sans-serif; font-size: 0.9rem;
+}
+.search-wrap input:focus { outline: none; border-color: var(–accent); }
+.search-icon {
+position: absolute; left: 12px; top: 50%; transform: translateY(-50%);
+color: var(–muted); font-size: 1rem;
+}
+
+/* ── Quantity stepper ── */
+.qty-stepper {
+display: flex; align-items: center; gap: 0;
+background: var(–surface); border: 1.5px solid var(–border);
+border-radius: 10px; overflow: hidden;
+}
+.qty-btn {
+width: 44px; height: 44px; background: none; border: none;
+color: var(–accent); font-size: 1.3rem; cursor: pointer;
+display: flex; align-items: center; justify-content: center;
+}
+.qty-val {
+flex: 1; text-align: center;
+font-family: ‘DM Mono’, monospace; font-size: 1.1rem;
+}
+
+/* ── Running total bar ── */
+.total-bar {
+position: sticky; bottom: 0;
+background: rgba(10,10,15,0.95); backdrop-filter: blur(12px);
+border-top: 1px solid var(–border);
+padding: 14px 20px;
+display: flex; align-items: center; justify-content: space-between;
+}
+.total-bar-label { font-size: 0.75rem; color: var(–muted); }
+.total-bar-amount {
+font-family: ‘DM Mono’, monospace;
+font-size: 1.4rem; font-weight: 500; color: var(–accent);
+}
+</style>
+
+</head>
+<body>
+
+<!-- TOP BAR -->
+
+<div class="topbar">
+  <div class="topbar-logo">Scan<span>Track</span></div>
+  <div class="topbar-total" id="session-total-badge">$0.00</div>
+</div>
+
+<!-- NAV -->
+
+<nav class="nav">
+  <button class="nav-tab active" onclick="showScreen('home')" id="tab-home">
+    <span class="tab-icon">🏠</span>Home
+  </button>
+  <button class="nav-tab" onclick="showScreen('list')" id="tab-list">
+    <span class="tab-icon">🛒</span>List
+  </button>
+  <button class="nav-tab" onclick="showScreen('session')" id="tab-session">
+    <span class="tab-icon">📦</span>Session
+  </button>
+  <button class="nav-tab" onclick="showScreen('products')" id="tab-products">
+    <span class="tab-icon">🗄️</span>Products
+  </button>
+  <button class="nav-tab" onclick="showScreen('export')" id="tab-export">
+    <span class="tab-icon">📤</span>Export
+  </button>
+</nav>
+
+<!-- ══════════════ HOME SCREEN ══════════════ -->
+
+<div class="screen active" id="screen-home">
+  <div style="padding-top:8px">
+    <div class="section-heading">Welcome back</div>
+    <div class="section-sub">What would you like to do today?</div>
+
+```
+<div class="stats-strip">
+  <div class="stat-box">
+    <div class="stat-val" id="stat-products">0</div>
+    <div class="stat-lbl">Products</div>
+  </div>
+  <div class="stat-box">
+    <div class="stat-val" id="stat-list">0</div>
+    <div class="stat-lbl">On List</div>
+  </div>
+  <div class="stat-box">
+    <div class="stat-val" id="stat-session">0</div>
+    <div class="stat-lbl">Scanned</div>
+  </div>
+</div>
+
+<div class="card" style="margin-bottom:12px">
+  <div class="card-title">Phase 1 — Build Shopping List</div>
+  <p style="font-size:0.85rem;color:var(--muted);margin-bottom:14px;line-height:1.5">
+    Scan items at home to record what you need and how many units.
+  </p>
+  <button class="btn btn-secondary" onclick="startScan('list')">
+    <span>📷</span> Scan for Shopping List
+  </button>
+</div>
+
+<div class="card">
+  <div class="card-title">Phase 2 — In-Store Scanning</div>
+  <p style="font-size:0.85rem;color:var(--muted);margin-bottom:14px;line-height:1.5">
+    Scan items as you shop — look up prices and track your running total.
+  </p>
+  <button class="btn btn-primary" onclick="startScan('session')">
+    <span>📷</span> Scan Item — Add to Session
+  </button>
+</div>
+```
+
+  </div>
+</div>
+
+<!-- ══════════════ SHOPPING LIST SCREEN ══════════════ -->
+
+<div class="screen" id="screen-list">
+  <div class="section-heading">Shopping List</div>
+  <div class="section-sub" id="list-count-label">0 items</div>
+
+  <button class="btn btn-secondary" style="margin-bottom:14px" onclick="startScan('list')">
+    <span>📷</span> Scan Item to Add
+  </button>
+
+  <div id="list-items"></div>
+
+  <button class="btn btn-danger btn-sm" style="margin-top:8px" onclick="clearList()">
+    🗑 Clear Shopping List
+  </button>
+</div>
+
+<!-- ══════════════ SESSION SCREEN ══════════════ -->
+
+<div class="screen" id="screen-session">
+  <div class="section-heading">Session</div>
+  <div class="section-sub" id="session-count-label">0 items scanned</div>
+
+  <button class="btn btn-primary" style="margin-bottom:14px" onclick="startScan('session')">
+    <span>📷</span> Scan Item
+  </button>
+
+  <div id="session-items"></div>
+
+  <div style="height:80px"></div>
+  <div class="total-bar">
+    <div>
+      <div class="total-bar-label">Session Total</div>
+    </div>
+    <div class="total-bar-amount" id="session-total-main">$0.00</div>
+  </div>
+</div>
+
+<!-- ══════════════ PRODUCTS SCREEN ══════════════ -->
+
+<div class="screen" id="screen-products">
+  <div class="section-heading">Product Database</div>
+  <div class="section-sub">All known items — auto-updated when you scan</div>
+
+  <div class="search-wrap">
+    <span class="search-icon">🔍</span>
+    <input type="text" placeholder="Search products…" oninput="renderProducts(this.value)">
+  </div>
+
+  <div id="product-list"></div>
+
+  <div class="divider"></div>
+  <button class="btn btn-outline" style="margin-top:4px" onclick="openAddProduct()">
+    ＋ Add Product Manually
+  </button>
+</div>
+
+<!-- ══════════════ EXPORT SCREEN ══════════════ -->
+
+<div class="screen" id="screen-export">
+  <div class="section-heading">Export Data</div>
+  <div class="section-sub">Download your data as CSV files</div>
+
+  <div class="card">
+    <div class="card-title">Products Database</div>
+    <p style="font-size:0.85rem;color:var(--muted);margin-bottom:12px">All known barcodes, descriptions, departments and prices.</p>
+    <button class="btn btn-outline" onclick="exportCSV('products')">⬇ Download Products.csv</button>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Shopping List</div>
+    <p style="font-size:0.85rem;color:var(--muted);margin-bottom:12px">Current shopping list with units needed per item.</p>
+    <button class="btn btn-outline" onclick="exportCSV('list')">⬇ Download ShoppingList.csv</button>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Session</div>
+    <p style="font-size:0.85rem;color:var(--muted);margin-bottom:12px">Current scan session with quantities, prices and line totals.</p>
+    <button class="btn btn-outline" onclick="exportCSV('session')">⬇ Download Session.csv</button>
+  </div>
+
+  <div class="divider"></div>
+  <div class="card">
+    <div class="card-title">⚠ Danger Zone</div>
+    <p style="font-size:0.85rem;color:var(--muted);margin-bottom:12px">Clear individual datasets. This cannot be undone.</p>
+    <div style="display:flex;flex-direction:column;gap:8px">
+      <button class="btn btn-danger btn-sm" onclick="clearData('list')">🗑 Clear Shopping List</button>
+      <button class="btn btn-danger btn-sm" onclick="clearData('session')">🗑 Clear Session</button>
+      <button class="btn btn-danger btn-sm" onclick="clearData('products')">🗑 Clear All Products</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════ SCANNER ══════════════ -->
+
+<div id="scanner-container">
+  <div class="scanner-top">
+    <div class="scanner-title" id="scanner-mode-label">Scan Barcode</div>
+    <button class="scanner-close" onclick="closeScanner()">✕</button>
+  </div>
+  <div id="interactive">
+    <div class="scanner-overlay">
+      <div class="scan-frame">
+        <div class="scan-line"></div>
+        <span class="scanner-label">Align barcode within frame</span>
+      </div>
+    </div>
+  </div>
+  <div class="scanner-manual">
+    <input type="text" id="manual-barcode" placeholder="Type barcode manually…" inputmode="numeric">
+    <button onclick="useManualBarcode()">Use</button>
+  </div>
+</div>
+
+<!-- ══════════════ MODALS ══════════════ -->
+
+<!-- New Item Modal -->
+
+<div class="modal-backdrop" id="modal-new-item">
+  <div class="modal">
+    <div class="modal-handle"></div>
+    <div class="modal-title">New Item Found</div>
+    <div class="modal-sub" id="new-item-barcode-label">Barcode: —</div>
+    <div class="field">
+      <label>Description</label>
+      <input type="text" id="ni-desc" placeholder="e.g. Coca-Cola 12pk">
+    </div>
+    <div class="field">
+      <label>Department</label>
+      <input type="text" id="ni-dept" placeholder="e.g. Beverages">
+    </div>
+    <div class="field">
+      <label>Retail Price ($)</label>
+      <input type="number" id="ni-price" placeholder="0.00" step="0.01" min="0">
+    </div>
+    <button class="btn btn-primary" style="margin-top:6px" onclick="saveNewItem()">
+      Save &amp; Continue
+    </button>
+  </div>
+</div>
+
+<!-- Quantity Modal (for known items) -->
+
+<div class="modal-backdrop" id="modal-quantity">
+  <div class="modal">
+    <div class="modal-handle"></div>
+    <div class="modal-title" id="qty-modal-title">How many?</div>
+    <div class="modal-sub" id="qty-modal-sub"></div>
+    <div class="qty-stepper" style="margin-bottom:20px">
+      <button class="qty-btn" onclick="changeQty(-1)">−</button>
+      <div class="qty-val" id="qty-display">1</div>
+      <button class="qty-btn" onclick="changeQty(1)">＋</button>
+    </div>
+    <button class="btn btn-primary" onclick="confirmQuantity()">Confirm</button>
+    <button class="btn btn-outline" style="margin-top:10px" onclick="closeModal('modal-quantity')">Cancel</button>
+  </div>
+</div>
+
+<!-- Add Product Modal -->
+
+<div class="modal-backdrop" id="modal-add-product">
+  <div class="modal">
+    <div class="modal-handle"></div>
+    <div class="modal-title">Add Product Manually</div>
+    <div class="modal-sub">Enter product details below</div>
+    <div class="field">
+      <label>Barcode</label>
+      <input type="text" id="ap-barcode" placeholder="e.g. 012345678901" inputmode="numeric">
+    </div>
+    <div class="field">
+      <label>Description</label>
+      <input type="text" id="ap-desc" placeholder="e.g. Tide Pods 35ct">
+    </div>
+    <div class="field">
+      <label>Department</label>
+      <input type="text" id="ap-dept" placeholder="e.g. Cleaning">
+    </div>
+    <div class="field">
+      <label>Retail Price ($)</label>
+      <input type="number" id="ap-price" placeholder="0.00" step="0.01" min="0">
+    </div>
+    <button class="btn btn-primary" style="margin-top:6px" onclick="saveManualProduct()">Add Product</button>
+    <button class="btn btn-outline" style="margin-top:10px" onclick="closeModal('modal-add-product')">Cancel</button>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ══════════════════════════════════════════════════════
+// DATA LAYER — localStorage
+// ══════════════════════════════════════════════════════
+const DB = {
+  get: k => JSON.parse(localStorage.getItem(k) || '[]'),
+  set: (k,v) => localStorage.setItem(k, JSON.stringify(v)),
+};
+
+const PRODUCTS_KEY = 'st_products';
+const LIST_KEY     = 'st_list';
+const SESSION_KEY  = 'st_session';
+
+function getProducts()  { return DB.get(PRODUCTS_KEY); }
+function getList()      { return DB.get(LIST_KEY); }
+function getSession()   { return DB.get(SESSION_KEY); }
+
+function saveProducts(d)  { DB.set(PRODUCTS_KEY, d); }
+function saveList(d)      { DB.set(LIST_KEY, d); }
+function saveSession(d)   { DB.set(SESSION_KEY, d); }
+
+function findProduct(barcode) {
+  return getProducts().find(p => String(p.barcode) === String(barcode));
+}
+
+// ══════════════════════════════════════════════════════
+// UI STATE
+// ══════════════════════════════════════════════════════
+let currentScanMode = 'session'; // 'list' or 'session'
+let pendingBarcode  = null;
+let currentQty      = 1;
+let pendingItem     = null; // item being qty'd
+
+function showScreen(name) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('screen-' + name).classList.add('active');
+  document.getElementById('tab-' + name).classList.add('active');
+  renderAll();
+}
+
+function renderAll() {
+  renderStats();
+  renderListScreen();
+  renderSessionScreen();
+  renderProducts();
+}
+
+// ══════════════════════════════════════════════════════
+// STATS
+// ══════════════════════════════════════════════════════
+function renderStats() {
+  document.getElementById('stat-products').textContent = getProducts().length;
+  document.getElementById('stat-list').textContent     = getList().length;
+  document.getElementById('stat-session').textContent  = getSession().length;
+
+  const total = sessionTotal();
+  document.getElementById('session-total-badge').textContent = '$' + total.toFixed(2);
+  document.getElementById('session-total-main').textContent  = '$' + total.toFixed(2);
+}
+
+function sessionTotal() {
+  return getSession().reduce((s, i) => s + (parseFloat(i.lineTotal) || 0), 0);
+}
+
+// ══════════════════════════════════════════════════════
+// SHOPPING LIST SCREEN
+// ══════════════════════════════════════════════════════
+function renderListScreen() {
+  const items = getList();
+  document.getElementById('list-count-label').textContent =
+    items.length === 0 ? '0 items' : `${items.length} item${items.length > 1 ? 's' : ''}`;
+
+  const el = document.getElementById('list-items');
+  if (items.length === 0) {
+    el.innerHTML = `<div class="empty"><div class="empty-icon">🛒</div>
+      <div class="empty-text">Your shopping list is empty.<br>Scan an item to get started.</div></div>`;
+    return;
+  }
+  el.innerHTML = items.map((item, i) => `
+    <div class="item-row">
+      <div class="item-icon">🏷</div>
+      <div class="item-info">
+        <div class="item-name">${esc(item.description)}</div>
+        <div class="item-meta"><span class="pill pill-dept">${esc(item.department)}</span></div>
+      </div>
+      <div class="item-badge">×${item.units}<br><span style="color:var(--muted);font-size:0.7rem">${esc(item.barcode)}</span></div>
+      <button class="item-delete" onclick="removeListItem(${i})">✕</button>
+    </div>`).join('');
+}
+
+function removeListItem(i) {
+  const items = getList(); items.splice(i, 1); saveList(items);
+  renderAll(); toast('Item removed from list');
+}
+
+function clearList() {
+  if (confirm('Clear the entire shopping list?')) {
+    saveList([]); renderAll(); toast('Shopping list cleared');
+  }
+}
+
+// ══════════════════════════════════════════════════════
+// SESSION SCREEN
+// ══════════════════════════════════════════════════════
+function renderSessionScreen() {
+  const items = getSession();
+  document.getElementById('session-count-label').textContent =
+    items.length === 0 ? '0 items scanned' : `${items.length} item${items.length > 1 ? 's' : ''} scanned`;
+
+  const el = document.getElementById('session-items');
+  if (items.length === 0) {
+    el.innerHTML = `<div class="empty"><div class="empty-icon">📦</div>
+      <div class="empty-text">No items scanned yet.<br>Tap the button above to start scanning.</div></div>`;
+    return;
+  }
+  el.innerHTML = items.map((item, i) => `
+    <div class="item-row">
+      <div class="item-icon">📦</div>
+      <div class="item-info">
+        <div class="item-name">${esc(item.description)}</div>
+        <div class="item-meta">
+          <span class="pill pill-dept">${esc(item.department)}</span>
+          <span style="margin-left:6px;color:var(--muted);font-size:0.72rem">$${parseFloat(item.price).toFixed(2)} ea</span>
+        </div>
+      </div>
+      <div class="item-badge">×${item.quantity}<br><span class="pill pill-green">$${parseFloat(item.lineTotal).toFixed(2)}</span></div>
+      <button class="item-delete" onclick="removeSessionItem(${i})">✕</button>
+    </div>`).join('');
+}
+
+function removeSessionItem(i) {
+  const items = getSession(); items.splice(i, 1); saveSession(items);
+  renderAll(); toast('Item removed from session');
+}
+
+// ══════════════════════════════════════════════════════
+// PRODUCTS SCREEN
+// ══════════════════════════════════════════════════════
+function renderProducts(query) {
+  let items = getProducts();
+  if (query) {
+    const q = query.toLowerCase();
+    items = items.filter(p =>
+      p.description.toLowerCase().includes(q) ||
+      p.department.toLowerCase().includes(q) ||
+      String(p.barcode).includes(q)
+    );
+  }
+  const el = document.getElementById('product-list');
+  if (items.length === 0) {
+    el.innerHTML = `<div class="empty"><div class="empty-icon">🗄️</div>
+      <div class="empty-text">No products yet.<br>They appear here automatically when you scan new barcodes.</div></div>`;
+    return;
+  }
+  const all = getProducts();
+  el.innerHTML = items.map(item => {
+    const idx = all.indexOf(item);
+    return `<div class="item-row">
+      <div class="item-icon">🏷</div>
+      <div class="item-info">
+        <div class="item-name">${esc(item.description)}</div>
+        <div class="item-meta">
+          <span class="pill pill-dept">${esc(item.department)}</span>
+          <span style="margin-left:6px;color:var(--muted);font-size:0.72rem">${esc(String(item.barcode))}</span>
+        </div>
+      </div>
+      <div class="item-badge">$${parseFloat(item.price).toFixed(2)}</div>
+      <button class="item-delete" onclick="removeProduct(${idx})">✕</button>
+    </div>`;
+  }).join('');
+}
+
+function removeProduct(i) {
+  const items = getProducts(); items.splice(i, 1); saveProducts(items);
+  renderAll(); toast('Product removed');
+}
+
+function openAddProduct() {
+  ['ap-barcode','ap-desc','ap-dept','ap-price'].forEach(id => document.getElementById(id).value = '');
+  openModal('modal-add-product');
+}
+
+function saveManualProduct() {
+  const barcode = document.getElementById('ap-barcode').value.trim();
+  const desc    = document.getElementById('ap-desc').value.trim();
+  const dept    = document.getElementById('ap-dept').value.trim();
+  const price   = parseFloat(document.getElementById('ap-price').value);
+  if (!barcode || !desc || !dept || isNaN(price)) {
+    toast('Please fill in all fields'); return;
+  }
+  const products = getProducts();
+  const existing = products.findIndex(p => String(p.barcode) === barcode);
+  if (existing >= 0) { products[existing] = {barcode, description:desc, department:dept, price}; }
+  else { products.push({barcode, description:desc, department:dept, price}); }
+  saveProducts(products);
+  closeModal('modal-add-product');
+  renderAll(); toast('Product saved');
+}
+
+// ══════════════════════════════════════════════════════
+// SCANNER
+// ══════════════════════════════════════════════════════
+let scannerRunning = false;
+
+function startScan(mode) {
+  currentScanMode = mode;
+  document.getElementById('scanner-mode-label').textContent =
+    mode === 'list' ? 'Scan for Shopping List' : 'Scan Item';
+  document.getElementById('manual-barcode').value = '';
+  document.getElementById('scanner-container').classList.add('open');
+
+  if (!scannerRunning) {
+    Quagga.init({
+      inputStream: {
+        name: 'Live',
+        type: 'LiveStream',
+        target: document.getElementById('interactive'),
+        constraints: { facingMode: 'environment' },
+      },
+      decoder: {
+        readers: ['ean_reader','ean_8_reader','code_128_reader','upc_reader','upc_e_reader','code_39_reader']
+      },
+      locate: true,
+    }, err => {
+      if (err) { toast('Camera not available — use manual entry'); return; }
+      Quagga.start();
+      scannerRunning = true;
+    });
+
+    Quagga.onDetected(data => {
+      const code = data.codeResult.code;
+      if (code) { onBarcodeDetected(code); }
+    });
+  }
+}
+
+function closeScanner() {
+  document.getElementById('scanner-container').classList.remove('open');
+  if (scannerRunning) { Quagga.stop(); scannerRunning = false; }
+}
+
+function useManualBarcode() {
+  const val = document.getElementById('manual-barcode').value.trim();
+  if (!val) { toast('Please enter a barcode'); return; }
+  closeScanner();
+  onBarcodeDetected(val);
+}
+
+function onBarcodeDetected(barcode) {
+  closeScanner();
+  pendingBarcode = barcode;
+
+  const product = findProduct(barcode);
+  if (product) {
+    // Known product — ask quantity
+    pendingItem = { ...product };
+    openQuantityModal(product);
+  } else {
+    // Unknown product — ask for details
+    document.getElementById('new-item-barcode-label').textContent = 'Barcode: ' + barcode;
+    document.getElementById('ni-desc').value  = '';
+    document.getElementById('ni-dept').value  = '';
+    document.getElementById('ni-price').value = '';
+    openModal('modal-new-item');
+  }
+}
+
+// ══════════════════════════════════════════════════════
+// NEW ITEM FLOW
+// ══════════════════════════════════════════════════════
+function saveNewItem() {
+  const desc  = document.getElementById('ni-desc').value.trim();
+  const dept  = document.getElementById('ni-dept').value.trim();
+  const price = parseFloat(document.getElementById('ni-price').value);
+
+  if (!desc || !dept || isNaN(price)) { toast('Please fill in all fields'); return; }
+
+  const newProduct = { barcode: pendingBarcode, description: desc, department: dept, price };
+  const products = getProducts();
+  products.push(newProduct);
+  saveProducts(products);
+
+  pendingItem = { ...newProduct };
+  closeModal('modal-new-item');
+
+  if (currentScanMode === 'list') {
+    openQuantityModal(newProduct, true);
+  } else {
+    openQuantityModal(newProduct);
+  }
+}
+
+// ══════════════════════════════════════════════════════
+// QUANTITY MODAL
+// ══════════════════════════════════════════════════════
+function openQuantityModal(product, isUnits = false) {
+  currentQty = 1;
+  document.getElementById('qty-display').textContent = 1;
+  document.getElementById('qty-modal-title').textContent =
+    isUnits || currentScanMode === 'list' ? 'Units needed?' : 'How many?';
+  document.getElementById('qty-modal-sub').textContent =
+    currentScanMode === 'list'
+      ? `${product.description} — how many units to add to list?`
+      : `${product.description} @ $${parseFloat(product.price).toFixed(2)} each`;
+  openModal('modal-quantity');
+}
+
+function changeQty(delta) {
+  currentQty = Math.max(1, currentQty + delta);
+  document.getElementById('qty-display').textContent = currentQty;
+}
+
+function confirmQuantity() {
+  closeModal('modal-quantity');
+  if (currentScanMode === 'list') {
+    addToList(pendingItem, currentQty);
+  } else {
+    addToSession(pendingItem, currentQty);
+  }
+  renderAll();
+}
+
+// ══════════════════════════════════════════════════════
+// ADD TO LIST / SESSION
+// ══════════════════════════════════════════════════════
+function addToList(product, units) {
+  const items = getList();
+  const idx = items.findIndex(i => String(i.barcode) === String(product.barcode));
+  if (idx >= 0) {
+    items[idx].units += units;
+  } else {
+    items.push({
+      barcode: product.barcode,
+      description: product.description,
+      department: product.department,
+      units,
+    });
+  }
+  saveList(items);
+  toast(`🛒 ${product.description} ×${units} added to list`);
+  showScreen('list');
+}
+
+function addToSession(product, qty) {
+  const items = getSession();
+  const idx = items.findIndex(i => String(i.barcode) === String(product.barcode));
+  const lineTotal = parseFloat(product.price) * qty;
+  if (idx >= 0) {
+    items[idx].quantity += qty;
+    items[idx].lineTotal = parseFloat(product.price) * items[idx].quantity;
+  } else {
+    items.push({
+      barcode: product.barcode,
+      description: product.description,
+      department: product.department,
+      price: product.price,
+      quantity: qty,
+      lineTotal,
+    });
+  }
+  saveSession(items);
+  const total = sessionTotal() + (idx >= 0 ? 0 : lineTotal) - (idx >= 0 ? lineTotal : 0);
+  toast(`✅ ${product.description} ×${qty} = $${lineTotal.toFixed(2)}`);
+  showScreen('session');
+}
+
+// ══════════════════════════════════════════════════════
+// EXPORT CSV
+// ══════════════════════════════════════════════════════
+function exportCSV(type) {
+  let csv, filename;
+  if (type === 'products') {
+    csv = 'Barcode,Description,Department,RetailPrice\n' +
+      getProducts().map(p => `${p.barcode},"${p.description}","${p.department}",${p.price}`).join('\n');
+    filename = 'Products.csv';
+  } else if (type === 'list') {
+    csv = 'Barcode,Description,Department,UnitsNeeded\n' +
+      getList().map(i => `${i.barcode},"${i.description}","${i.department}",${i.units}`).join('\n');
+    filename = 'ShoppingList.csv';
+  } else {
+    csv = 'Barcode,Description,Department,UnitPrice,Quantity,LineTotal\n' +
+      getSession().map(i => `${i.barcode},"${i.description}","${i.department}",${i.price},${i.quantity},${i.lineTotal.toFixed(2)}`).join('\n');
+    filename = 'Session.csv';
+  }
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href = url; a.download = filename; a.click();
+  URL.revokeObjectURL(url);
+  toast(`${filename} downloaded`);
+}
+
+// ══════════════════════════════════════════════════════
+// CLEAR DATA
+// ══════════════════════════════════════════════════════
+function clearData(type) {
+  const labels = { products: 'all products', list: 'shopping list', session: 'session' };
+  if (!confirm(`Clear the ${labels[type]}? This cannot be undone.`)) return;
+  if (type === 'products') saveProducts([]);
+  if (type === 'list')     saveList([]);
+  if (type === 'session')  saveSession([]);
+  renderAll(); toast(`${labels[type]} cleared`.replace(/^\w/, c => c.toUpperCase()));
+}
+
+// ══════════════════════════════════════════════════════
+// MODAL HELPERS
+// ══════════════════════════════════════════════════════
+function openModal(id)  { document.getElementById(id).classList.add('open'); }
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+
+// Close modal on backdrop tap
+document.querySelectorAll('.modal-backdrop').forEach(backdrop => {
+  backdrop.addEventListener('click', e => {
+    if (e.target === backdrop) backdrop.classList.remove('open');
+  });
+});
+
+// ══════════════════════════════════════════════════════
+// TOAST
+// ══════════════════════════════════════════════════════
+let toastTimer;
+function toast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 2600);
+}
+
+// ══════════════════════════════════════════════════════
+// UTILS
+// ══════════════════════════════════════════════════════
+function esc(str) {
+  return String(str)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ══════════════════════════════════════════════════════
+// INIT
+// ══════════════════════════════════════════════════════
+renderAll();
+</script>
+
+</body>
+</html>
