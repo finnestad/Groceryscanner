@@ -356,7 +356,10 @@
       gap: 14px;
       animation: fadein 0.3s ease;
       box-shadow: var(--shadow);
+      transition: border-color 0.15s, background 0.15s;
     }
+
+    .product-card:hover { border-color: var(--accent); background: var(--accent-light); }
 
     .product-icon { font-size: 1.8rem; flex-shrink: 0; }
     .product-info { flex: 1; min-width: 0; }
@@ -601,6 +604,7 @@
   <div class="logo">
     <span class="logo-icon">🛒</span>
     <span class="logo-text">Grocery<span>Scanner</span></span>
+    <span style="font-size:0.65rem; color:rgba(255,255,255,0.45); font-weight:500; margin-left:10px; white-space:nowrap;">developed by <a href="mailto:finnestad@gmail.com" style="color:#7eb8f7; text-decoration:underline; font-weight:600;">Andrew Finnestad</a></span>
   </div>
   <div class="tally-pill">
     <span class="tally-label">Total</span>
@@ -664,8 +668,8 @@
   <!-- ═══ PRODUCTS PANEL ═══ -->
   <div id="products-panel" class="panel">
     <div class="search-row">
-      <button class="btn btn-danger" style="flex:none; padding:10px 14px; font-size:0.8rem;" onclick="clearProducts()">🗑 Clear List</button>
       <input class="search-field" id="product-search" type="text" placeholder="🔍 Search saved products…" oninput="renderProducts()" />
+      <button class="btn btn-danger" style="flex:none; padding:10px 14px; font-size:0.8rem;" onclick="clearProducts()">🗑 Clear List</button>
     </div>
     <!-- Batch toolbar -->
     <div class="batch-toolbar" id="batch-toolbar">
@@ -1198,8 +1202,10 @@ function renderProducts() {
     const sel = selectedBarcodes.has(p.barcode);
     const sb  = p.barcode.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
     return `
-    <div class="product-card${sel ? ' selected' : ''}" id="pc-${p.barcode.replace(/[^a-zA-Z0-9]/g,'_')}">
+    <div class="product-card${sel ? ' selected' : ''}" id="pc-${p.barcode.replace(/[^a-zA-Z0-9]/g,'_')}"
+      onclick="openEdit('${sb}')" style="cursor:pointer;" title="Tap to edit">
       <input type="checkbox" class="product-cb" ${sel ? 'checked' : ''}
+        onclick="event.stopPropagation()"
         onchange="toggleSelect('${sb}', this.checked)" />
       <div class="product-icon">${DEPT_ICONS[p.dept] || '📦'}</div>
       <div class="product-info">
@@ -1208,8 +1214,7 @@ function renderProducts() {
       </div>
       <div class="product-price">$${fmt(p.price)}</div>
       <div class="product-actions">
-        <button class="icon-btn" onclick="openEdit('${sb}')" title="Edit">✏️</button>
-        <button class="icon-btn del" onclick="confirmDelete('${sb}')" title="Delete">🗑️</button>
+        <button class="icon-btn del" onclick="event.stopPropagation(); confirmDelete('${sb}')" title="Delete">🗑️</button>
       </div>
     </div>`;
   }).join('');
