@@ -122,7 +122,7 @@ font-size:0.95rem;
 
 .btn-primary{background:var(--accent);color:#000;}
 .btn-secondary{background:var(--accent2);color:#fff;}
-.btn-outline{background:transparent;border:1.5px solid var(--border);color:var(--text);}
+.btn-outline{background:transparent;border:1.5px solid var(--border);color:var(--text;)}
 .btn-danger{background:rgba(255,60,60,0.15);border:1px solid rgba(255,60,60,0.3);color:#ff6060;}
 
 .item-row{
@@ -136,13 +136,12 @@ border-bottom:1px solid var(--border);
 .item-icon{
 width:40px;
 height:40px;
-border-radius:10px;
-background:rgba(124,106,255,0.15);
+border-radius:10px;ackground:rgba(124,106,255,0.15);
 border:1px solid rgba(124,106,255,0.25);
 display:flex;
 align-items:center;
 justify-content:center;
-}
+} 
 
 .item-info{flex:1;}
 
@@ -165,6 +164,74 @@ transition:0.3s;
 }
 
 .toast.show{opacity:1;}
+
+/* Modal styles */
+.modal{
+display:none;
+position:fixed;
+top:0;
+left:0;
+right:0;
+bottom:0;ackground:rgba(0,0,0,0.7);
+z-index:1000;
+align-items:center;
+justify-content:center;
+}
+
+.modal.active{display:flex;}
+
+.modal-content{
+background:var(--card);
+border:1px solid var(--border);
+border-radius:16px;
+padding:24px;
+width:90%;
+max-width:400px;
+max-height:90vh;
+overflow-y:auto;
+}
+
+.modal-header{
+font-size:1.2rem;
+font-weight:700;
+margin-bottom:16px;
+}
+
+.form-group{
+margin-bottom:16px;
+}
+
+.form-label{
+display:block;
+font-size:0.85rem;
+font-weight:600;
+margin-bottom:6px;
+color:var(--text);
+}
+
+.form-input{
+width:100%;
+padding:10px 12px;ackground:var(--surface);
+border:1px solid var(--border);
+border-radius:8px;
+color:var(--text);
+font-family:'Syne',sans-serif;
+font-size:0.9rem;
+}
+
+.form-input:focus{
+outline:none;
+border-color:var(--accent);
+box-shadow:0 0 0 2px rgba(0,229,160,0.1);
+}
+
+.modal-footer{
+display:flex;
+gap:10px;
+margin-top:20px;
+}
+
+.modal-footer button{flex:1;}
 </style>
 </head>
 
@@ -192,6 +259,35 @@ transition:0.3s;
 <button class="btn btn-primary" onclick="startScan('session')">📷 Scan Item</button>
 </div>
 
+<!-- Item Details Modal -->
+<div class="modal" id="item-modal">
+<div class="modal-content">
+<div class="modal-header">Add Item Details</div>
+<form onsubmit="saveItem(event)">
+<div class="form-group">
+<label class="form-label">Barcode</label>
+<input type="text" id="barcode-input" class="form-input" readonly>
+</div>
+<div class="form-group">
+<label class="form-label">Product Name</label>
+<input type="text" id="product-name" class="form-input" placeholder="Enter product name" required>
+</div>
+<div class="form-group">
+<label class="form-label">Price</label>
+<input type="number" id="product-price" class="form-input" placeholder="0.00" step="0.01" required>
+</div>
+<div class="form-group">
+<label class="form-label">Category</label>
+<input type="text" id="product-category" class="form-input" placeholder="e.g., Produce, Dairy">
+</div>
+<div class="modal-footer">
+<button type="button" class="btn btn-outline" onclick="closeModal()">Cancel</button>
+<button type="submit" class="btn btn-primary">Save Item</button>
+</div>
+</form>
+</div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script>
@@ -205,6 +301,8 @@ set:(k,v)=>localStorage.setItem(k,JSON.stringify(v))
 const PRODUCTS_KEY='st_products';
 const LIST_KEY='st_list';
 const SESSION_KEY='st_session';
+
+let currentScanMode='session';
 
 function showScreen(name){
 
@@ -222,9 +320,11 @@ document.getElementById('tab-'+name).classList.add('active');
 
 let scannerRunning=false;
 
-function startScan(){
+function startScan(mode){
 
 if(scannerRunning) return;
+
+currentScanMode=mode;
 
 Quagga.init({
 
@@ -256,11 +356,57 @@ scannerRunning=true;
 
 Quagga.onDetected(data=>{
 const code=data.codeResult.code;
-toast("Detected barcode: "+code);
 Quagga.stop();
 scannerRunning=false;
+openItemModal(code);
 });
 
+}
+
+/* Modal functions */
+
+function openItemModal(barcode){
+document.getElementById('barcode-input').value=barcode;
+document.getElementById('product-name').value='';
+document.getElementById('product-price').value='';
+document.getElementById('product-category').value='';
+document.getElementById('item-modal').classList.add('active');
+document.getElementById('product-name').focus();
+}
+
+function closeModal(){
+document.getElementById('item-modal').classList.remove('active');
+}
+
+function saveItem(e){
+e.preventDefault();
+
+const barcode=document.getElementById('barcode-input').value;
+const name=document.getElementById('product-name').value;
+const price=parseFloat(document.getElementById('product-price').value);
+const category=document.getElementById('product-category').value;
+
+const item={barcode,name,price,category,timestamp:new Date().toISOString()};
+
+if(currentScanMode==='list'){
+const list=DB.get(LIST_KEY);
+list.push(item);
+DB.set(LIST_KEY,list);
+}else if(currentScanMode==='session'){
+const session=DB.get(SESSION_KEY);
+session.push(item);
+DB.set(SESSION_KEY,session);
+updateSessionTotal();
+}
+
+closeModal();
+toast('Item saved: '+name);
+}
+
+function updateSessionTotal(){
+const session=DB.get(SESSION_KEY);
+const total=session.reduce((sum,item)=>sum+item.price,0);
+document.getElementById('session-total-badge').textContent='$'+total.toFixed(2);
 }
 
 /* toast */
@@ -281,6 +427,8 @@ el.classList.remove('show');
 },2500);
 
 }
+
+updateSessionTotal();
 
 </script>
 
