@@ -637,6 +637,38 @@
     }
 
     #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+    /* DEPARTMENTS TAB */
+    .dept-group-label {
+      font-size: 0.65rem;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--ink2);
+      margin-bottom: 8px;
+    }
+
+    .dept-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 12px 14px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      box-shadow: var(--shadow);
+      font-size: 0.88rem;
+      font-weight: 600;
+    }
+
+    .dept-card.builtin {
+      background: var(--surface2);
+      color: var(--ink2);
+    }
+
+    .dept-card .dept-name { flex: 1; }
+
+    .dept-add-row { display: flex; gap: 8px; }
+
   </style>
 </head>
 <body>
@@ -659,6 +691,7 @@
   <button class="tab-btn active" onclick="switchTab('scan')">📷 Scan</button>
   <button class="tab-btn" onclick="switchTab('cart')">🧺 Cart <span id="cart-badge"></span></button>
   <button class="tab-btn" onclick="switchTab('products')">📦 Products</button>
+  <button class="tab-btn" onclick="switchTab('depts')">🏷 Depts</button>
 </div>
 
 <div class="content">
@@ -723,6 +756,29 @@
     <div class="items-grid" id="products-list"></div>
   </div>
 
+  <!-- ═══ DEPARTMENTS PANEL ═══ -->
+  <div id="depts-panel" class="panel">
+    <div class="section-label" style="margin-bottom:10px;">Your Departments</div>
+    <p style="font-size:0.78rem; color:var(--ink2); margin-bottom:14px;">Base departments are built-in and cannot be removed. Custom departments you add are listed below and can be deleted.</p>
+
+    <!-- Base departments (read-only) -->
+    <div class="dept-group-label">Built-in</div>
+    <div class="items-grid" id="base-depts-list"></div>
+
+    <div class="dept-group-label" style="margin-top:16px;">Custom</div>
+    <div class="items-grid" id="custom-depts-list"></div>
+
+    <!-- Add new department inline -->
+    <div class="dept-add-row" style="margin-top:14px;">
+      <input class="search-field" id="new-dept-input" type="text" placeholder="＋ New department name…"
+             style="font-size:16px;"
+             onkeydown="if(event.key==='Enter') addDeptFromTab()" />
+      <button class="btn btn-green" style="flex:none;" onclick="addDeptFromTab()">Add</button>
+    </div>
+    <div id="dept-tab-error" style="display:none; font-size:0.78rem; color:var(--danger); margin-top:6px;"></div>
+  </div>
+
+
 </div>
 
 <!-- BOTTOM BAR -->
@@ -735,8 +791,8 @@
 <div class="modal-backdrop" id="new-item-modal">
   <div class="modal">
     <div class="modal-header">
-      <div class="modal-eyebrow">New Item Found</div>
-      <div class="modal-title">Enter item details</div>
+      <div class="modal-eyebrow" id="f-eyebrow">New Item Found</div>
+      <div class="modal-title" id="f-title">Enter item details</div>
       <div class="modal-barcode" id="modal-barcode-display"></div>
     </div>
     <div class="form-group">
@@ -942,12 +998,13 @@ function saveCart() { localStorage.setItem('gs_cart',     JSON.stringify(cart));
 // ══════════════════════════════════════════
 function switchTab(name) {
   document.querySelectorAll('.tab-btn').forEach((b, i) => {
-    b.classList.toggle('active', ['scan','cart','products'][i] === name);
+    b.classList.toggle('active', ['scan','cart','products','depts'][i] === name);
   });
   document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
   document.getElementById(name + '-panel').classList.add('active');
   if (name === 'products') renderProducts();
   if (name === 'cart')     renderCartFull();
+  if (name === 'depts')    renderDepts();
 }
 
 // ══════════════════════════════════════════
@@ -1051,24 +1108,36 @@ function processCode(code) {
 
   const product = productDB.find(p => p.barcode === code);
 
-  if (!product) {
-    // Unknown — open modal to collect details
-    pendingCode = code;
-    document.getElementById('modal-barcode-display').textContent = 'Barcode: ' + code;
+  // Open modal — pre-fill with saved data if known, blank if new
+  pendingCode = code;
+  document.getElementById('modal-barcode-display').textContent = 'Barcode: ' + code;
+  document.getElementById('new-item-error').style.display = 'none';
+  document.getElementById('f-custom-dept-group').style.display = 'none';
+
+  if (product) {
+    // Pre-populate with saved product details
+    document.getElementById('f-eyebrow').textContent = 'Known Item';
+    document.getElementById('f-title').textContent   = 'Confirm & add to cart';
+    document.getElementById('f-name').value  = product.name;
+    document.getElementById('f-price').value = product.price;
+    document.getElementById('f-qty').value   = '1';
+    populateSelect('f-dept', product.dept);
+  } else {
+    // Blank form for new item
+    document.getElementById('f-eyebrow').textContent = 'New Item Found';
+    document.getElementById('f-title').textContent   = 'Enter item details';
     document.getElementById('f-name').value  = '';
     document.getElementById('f-price').value = '';
     document.getElementById('f-qty').value   = '1';
-    document.getElementById('f-custom-dept-group').style.display = 'none';
-    document.getElementById('new-item-error').style.display = 'none';
     populateSelect('f-dept', '');
-    document.getElementById('new-item-modal').classList.add('open');
-    setTimeout(() => document.getElementById('f-name').focus(), 200);
-    return;
   }
 
-  // Known — add to cart (increment qty if already in cart)
-  addToCart(product, 1);
-  showFlash(`✓ ${product.name} added — $${fmt(product.price)}`, 'success');
+  document.getElementById('new-item-modal').classList.add('open');
+  // Focus qty for known items (just confirm & add), name for new items
+  setTimeout(() => {
+    if (product) document.getElementById('f-qty').focus();
+    else document.getElementById('f-name').focus();
+  }, 200);
 }
 
 // ══════════════════════════════════════════
@@ -1576,6 +1645,65 @@ function saveCartEdit() {
 function removeFromCartAndClose() {
   if (editingCartBarcode) removeFromCart(editingCartBarcode);
   closeCartEditModal();
+}
+
+
+// ══════════════════════════════════════════
+//  DEPARTMENTS TAB
+// ══════════════════════════════════════════
+function renderDepts() {
+  // Built-in list
+  const baseEl = document.getElementById('base-depts-list');
+  baseEl.innerHTML = BASE_DEPTS.map(d =>
+    `<div class="dept-card builtin"><span class="dept-name">${escHtml(d)}</span></div>`
+  ).join('');
+
+  // Custom list
+  const custEl = document.getElementById('custom-depts-list');
+  if (!customDepts.length) {
+    custEl.innerHTML = `<div style="font-size:0.8rem; color:var(--ink2); padding:8px 0;">No custom departments yet.</div>`;
+    return;
+  }
+  const sorted = [...customDepts].sort((a,b) => a.localeCompare(b));
+  custEl.innerHTML = sorted.map(d =>
+    `<div class="dept-card">
+      <span class="dept-name">${escHtml(d)}</span>
+      <button class="icon-btn del" onclick="deleteCustomDept('${escHtml(d).replace(/'/g,"\\'")}')" title="Delete">🗑</button>
+    </div>`
+  ).join('');
+}
+
+function addDeptFromTab() {
+  const input = document.getElementById('new-dept-input');
+  const errEl = document.getElementById('dept-tab-error');
+  const name  = input.value.trim();
+
+  errEl.style.display = 'none';
+  if (!name) return;
+
+  if (name.toLowerCase() === 'other') {
+    errEl.textContent = '"Other" is a built-in department.';
+    errEl.style.display = 'block';
+    return;
+  }
+  if (getDepts().some(d => d.toLowerCase() === name.toLowerCase())) {
+    errEl.textContent = 'That department already exists.';
+    errEl.style.display = 'block';
+    return;
+  }
+
+  customDepts.push(name);
+  saveDepts();
+  input.value = '';
+  renderDepts();
+  showToast(`"${name}" added`);
+}
+
+function deleteCustomDept(name) {
+  customDepts = customDepts.filter(d => d !== name);
+  saveDepts();
+  renderDepts();
+  showToast(`"${name}" removed`);
 }
 
 // ══════════════════════════════════════════
