@@ -276,7 +276,10 @@
       gap: 14px;
       animation: fadein 0.3s ease;
       box-shadow: var(--shadow);
+      transition: border-color 0.15s, background 0.15s;
     }
+
+    .cart-card:hover { border-color: var(--accent); background: var(--accent-light); }
 
     .cart-dept {
       font-size: 0.65rem;
@@ -776,6 +779,48 @@
   </div>
 </div>
 
+<!-- ═══ EDIT CART ITEM MODAL ═══ -->
+<div class="modal-backdrop" id="cart-edit-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-eyebrow">Edit Cart Item</div>
+      <div class="modal-title" id="ce-title"></div>
+      <div class="modal-barcode" id="ce-barcode-display"></div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Item Description</label>
+      <input class="form-input" id="ce-name" type="text" />
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Department</label>
+        <select class="form-input" id="ce-dept" onchange="handleDeptChange('ce')"></select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Retail Price ($)</label>
+        <input class="form-input" id="ce-price" type="number" min="0" step="0.01" />
+      </div>
+    </div>
+    <div class="form-group" id="ce-custom-dept-group" style="display:none;">
+      <label class="form-label">New Department Name</label>
+      <div style="display:flex; gap:8px;">
+        <input class="form-input" id="ce-custom-dept" type="text" placeholder="e.g. Deli" style="flex:1;" />
+        <button type="button" class="btn btn-green" style="flex:none; padding:10px 16px;" onclick="addCustomDept('ce')">Add</button>
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Quantity</label>
+      <input class="form-input" id="ce-qty" type="number" min="1" step="1" value="1" />
+    </div>
+    <div id="ce-error" style="display:none; background:#fde8e8; color:#b82a2a; border:1px solid #f0c0c0; border-radius:8px; padding:10px 14px; font-size:0.83rem; font-weight:600; margin-top:4px;">Please fill in all fields.</div>
+    <div class="modal-actions">
+      <button class="btn btn-danger" style="flex:none;" onclick="removeFromCartAndClose()">🗑 Remove</button>
+      <button class="btn btn-ghost" onclick="closeCartEditModal()">Cancel</button>
+      <button class="btn btn-green" onclick="saveCartEdit()">Save</button>
+    </div>
+  </div>
+</div>
+
 <div id="toast"></div>
 
 <script>
@@ -1033,8 +1078,9 @@ function updateCartBadge() {
 }
 
 function cartCardHTML(c) {
+  const sb = c.barcode.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
   return `
-    <div class="cart-card">
+    <div class="cart-card" onclick="openCartEdit('${sb}')" style="cursor:pointer;" title="Tap to edit">
       <span class="cart-dept">${escHtml(c.dept || '—')}</span>
       <div class="cart-info">
         <div class="cart-name">${escHtml(c.name)}</div>
@@ -1044,7 +1090,7 @@ function cartCardHTML(c) {
         <div class="cart-line-total">$${fmt(c.price * c.qty)}</div>
         <div class="cart-qty">×${c.qty} @ $${fmt(c.price)}</div>
       </div>
-      <button class="cart-remove" onclick="removeFromCart('${escAttr(c.barcode)}')" title="Remove">✕</button>
+      <button class="cart-remove" onclick="event.stopPropagation(); removeFromCart('${sb}')" title="Remove">✕</button>
     </div>`;
 }
 
@@ -1400,11 +1446,82 @@ document.querySelectorAll('.modal-backdrop').forEach(bd => {
   bd.addEventListener('click', e => {
     if (e.target === bd) {
       bd.classList.remove('open');
-      pendingCode = null;
-      editingCode = null;
+      pendingCode        = null;
+      editingCode        = null;
+      editingCartBarcode = null;
     }
   });
 });
+
+// ══════════════════════════════════════════
+//  CART ITEM EDIT MODAL
+// ══════════════════════════════════════════
+let editingCartBarcode = null;
+
+function openCartEdit(barcode) {
+  const item = cart.find(c => c.barcode === barcode);
+  if (!item) return;
+  editingCartBarcode = barcode;
+  document.getElementById('ce-title').textContent      = item.name;
+  document.getElementById('ce-barcode-display').textContent = 'Barcode: ' + barcode;
+  document.getElementById('ce-name').value  = item.name;
+  document.getElementById('ce-price').value = item.price;
+  document.getElementById('ce-qty').value   = item.qty;
+  document.getElementById('ce-custom-dept-group').style.display = 'none';
+  document.getElementById('ce-error').style.display = 'none';
+  populateSelect('ce-dept', item.dept);
+  document.getElementById('cart-edit-modal').classList.add('open');
+  setTimeout(() => document.getElementById('ce-name').focus(), 200);
+}
+
+function closeCartEditModal() {
+  const modal = document.getElementById('cart-edit-modal');
+  modal.classList.remove('open');
+  modal.style.display = 'none';
+  setTimeout(() => { modal.style.display = ''; }, 50);
+  editingCartBarcode = null;
+  document.getElementById('ce-custom-dept-group').style.display = 'none';
+  document.getElementById('ce-error').style.display = 'none';
+}
+
+function saveCartEdit() {
+  const name  = document.getElementById('ce-name').value.trim();
+  const dept  = document.getElementById('ce-dept').value;
+  const price = parseFloat(document.getElementById('ce-price').value);
+  const qty   = parseInt(document.getElementById('ce-qty').value) || 1;
+  const errEl = document.getElementById('ce-error');
+
+  if (!name || !dept || isNaN(price) || price < 0) {
+    errEl.textContent   = 'Please fill in all fields correctly.';
+    errEl.style.display = 'block';
+    return;
+  }
+
+  // Update cart entry
+  const ci = cart.findIndex(c => c.barcode === editingCartBarcode);
+  if (ci >= 0) {
+    cart[ci] = { ...cart[ci], name, dept, price, qty };
+    saveCart();
+  }
+
+  // Also update product DB so future scans use the new details
+  const pi = productDB.findIndex(p => p.barcode === editingCartBarcode);
+  if (pi >= 0) {
+    productDB[pi] = { ...productDB[pi], name, dept, price };
+    saveDB();
+  }
+
+  closeCartEditModal();
+  renderCartMini();
+  renderCartFull();
+  updateTally();
+  showToast('Item updated');
+}
+
+function removeFromCartAndClose() {
+  if (editingCartBarcode) removeFromCart(editingCartBarcode);
+  closeCartEditModal();
+}
 
 // ══════════════════════════════════════════
 //  INIT
