@@ -658,9 +658,9 @@
 
   <!-- ═══ CART PANEL ═══ -->
   <div id="cart-panel" class="panel">
-    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px;">
-      <div class="section-label" style="margin-bottom:0">All items in this shop</div>
-      <button class="btn btn-danger" style="padding:8px 14px; font-size:0.8rem;" onclick="clearCart()">🗑 Clear List</button>
+    <div class="search-row">
+      <input class="search-field" id="cart-search" type="text" placeholder="🔍 Search cart…" oninput="renderCartFull()" />
+      <button class="btn btn-danger" style="flex:none; padding:10px 14px; font-size:0.8rem;" onclick="clearCart()">🗑 Clear List</button>
     </div>
     <div class="items-grid" id="cart-full-list"></div>
   </div>
@@ -1108,12 +1108,20 @@ function renderCartMini() {
 }
 
 function renderCartFull() {
-  const el = document.getElementById('cart-full-list');
+  const q    = (document.getElementById('cart-search')?.value || '').toLowerCase();
+  const el   = document.getElementById('cart-full-list');
+  const list = cart.filter(c =>
+    c.name.toLowerCase().includes(q) || c.barcode.includes(q) || (c.dept||'').toLowerCase().includes(q)
+  );
   if (!cart.length) {
     el.innerHTML = `<div class="empty-state"><div class="icon">🧺</div><p>Cart is empty.</p></div>`;
     return;
   }
-  el.innerHTML = cart.map(cartCardHTML).join('');
+  if (!list.length) {
+    el.innerHTML = `<div class="empty-state"><div class="icon">🔍</div><p>No items match your search.</p></div>`;
+    return;
+  }
+  el.innerHTML = list.map(cartCardHTML).join('');
 }
 
 // ══════════════════════════════════════════
